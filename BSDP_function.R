@@ -40,12 +40,12 @@ weights2=function(K,L,V,Z){
 #suppose both K,M in G and Bspline are the same
 # lambda's prior is Gamma(a,b)
 # sigma's prior is IGamma(nu0,s0)
-# for Y's range use logb, baseb is the base
+# for Y's range use mu_f, baseb is the base
 # with burnin 2000 iterations
 # dk is the MH parameter of K
 
 gibbs_bspline_est_linkfunction= function(
-    X,Y,S=10000,L=max(20,n^(1/3)),Kmax=50,M=1,a=0.01,b=0.01,K=10,d=3,nu0=500,s0=0.05,lambda=10,dk=4,sigma=0.5,baseb=1.15,burnin=2000
+    X,Y,S=10000,L=max(20,n^(1/3)),Kmax=50,M=1,a=0.01,b=0.01,K=10,d=3,nu0=500,s0=0.05,lambda=10,dk=4,sigma=0.5,baseb=1.15,burnin=2000,logstate=TRUE
 ){
     n=nrow(X)
     p=ncol(X)
@@ -83,7 +83,18 @@ gibbs_bspline_est_linkfunction= function(
 
     #Initialise kc
     kc=runif(n,0,3) 
-
+    
+    #if log
+    if(logstate){
+      mu_f=function(x,baseb){
+          return(logb(x,baseb))
+        } 
+    }else{
+      mu_f=function(x,baseb){
+            return(x)
+        }
+    }
+    
     ###
     # Parameter space
     ###
@@ -105,10 +116,24 @@ gibbs_bspline_est_linkfunction= function(
 
     ### step1: K by Metropolis-within-Gibbs
 
-        # use random walk for K
-        Lk=max(4,round(K-dk))
-        Uk=min(Kmax,ceiling(K+dk))
-        K.star=sample(Lk:Uk,1)
+        # use random walk for K 7:3 Cauchy:uniform                                                                                                                                       
+        ss <- runif(1)
+        if (ss < 0.7) {  
+          jump <- sample(-1:1, 1, prob = rep(1 / 3, 3))
+        }
+        else {
+          jump <- round(rt(1, 1))  #discrete Cauchy
+        }
+        K.star <- K + jump
+        while (K.star < (d + 2) || K.star > Kmax) {  # A bit hacky to ensure k doesn't go out of bounds
+          if (ss < 0.7) {
+            jump <- sample(-1:1, 1, prob = rep(1 / 3, 3))  # Ordinary proposal
+          }
+          else {
+            jump <- round(rt(1, 1))  # Bold proposal
+          }
+          K.star <- K + jump
+        }
 
         if(K.star!=K){# the weights will change
             G.star=rep(0,K.star)
@@ -135,8 +160,8 @@ gibbs_bspline_est_linkfunction= function(
                 Bspline_dens[,i]=bspline_dens
                 bspline_dens.star=dbspline(w,in_knots.star)
                 Bspline_dens.star[,i]=bspline_dens.star
-                s1=s1+dnorm(Y[i],logb(t(G.star)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
-                s2=s2+dnorm(Y[i],logb(t(G)%*%bspline_dens,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                s1=s1+dnorm(Y[i],mu_f(t(G.star)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                s2=s2+dnorm(Y[i],mu_f(t(G)%*%bspline_dens,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
             }
 
             ### the accept or reject for K.star
@@ -226,8 +251,8 @@ gibbs_bspline_est_linkfunction= function(
                     bspline_dens.star=dbspline(w.star,in_knots)
                     Bspline_dens.star[,i]=bspline_dens.star
 
- 			        s1=s1+dnorm(Y[i],logb(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
- 			        s2=s2+dnorm(Y[i],logb(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 			        s1=s1+dnorm(Y[i],mu_f(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 			        s2=s2+dnorm(Y[i],mu_f(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
  		        }   
 
                 ### the accept or reject for r.star
@@ -271,8 +296,8 @@ gibbs_bspline_est_linkfunction= function(
  		        w.star=exp(XB.s[i])/(1+exp(XB.s[i]))
                 bspline_dens.star=dbspline(w.star,in_knots)
                 Bspline_dens.star[,i]=bspline_dens.star
- 			    s1=s1+dnorm(Y[i],logb(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
- 			    s2=s2+dnorm(Y[i],logb(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 			    s1=s1+dnorm(Y[i],mu_f(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 			    s2=s2+dnorm(Y[i],mu_f(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
  		    }   
             
             ### the accept or reject for beta.star
@@ -310,8 +335,8 @@ gibbs_bspline_est_linkfunction= function(
             # the log posterior 
             s1=s2=0
             for(i in 1:n){
-                s1=s1+dnorm(Y[i],logb(t(G.star)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
-                s2=s2+dnorm(Y[i],logb(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                s1=s1+dnorm(Y[i],mu_f(t(G.star)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                s2=s2+dnorm(Y[i],mu_f(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
             }
 
             ### the accept or reject for V.star
@@ -355,8 +380,8 @@ gibbs_bspline_est_linkfunction= function(
 
                 s1=s2=0
                 for (i in 1:n){
-                    s1=s1+dnorm(Y[i],logb(t(G.star)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
-                    s2=s2+dnorm(Y[i],logb(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                    s1=s1+dnorm(Y[i],mu_f(t(G.star)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                    s2=s2+dnorm(Y[i],mu_f(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
                 }
                 lnr=s1-s2
                 if(min(exp(lnr),1)>runif(1)){
@@ -396,8 +421,8 @@ gibbs_bspline_est_linkfunction= function(
                 w=exp(XB[i])/(1+exp(XB[i]))
                 bspline_dens.star=dbspline(w,in_knots.star)
                 Bspline_dens.star[,i]=bspline_dens.star
-                s1=s1+dnorm(Y[i],logb(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
-                s2=s2+dnorm(Y[i],logb(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                s1=s1+dnorm(Y[i],mu_f(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                s2=s2+dnorm(Y[i],mu_f(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
             }
  	        lnr=s1-s2+(M-1)*(log(1-Ul.star)-log(1-U[l]))                                                                                                                                                  
  	        if(min(exp(lnr),1)>runif(1)){
@@ -450,8 +475,8 @@ gibbs_bspline_est_linkfunction= function(
                     w=exp(XB[i])/(1+exp(XB[i]))
                     bspline_dens.star=dbspline(w,in_knots.star)
                     Bspline_dens.star[,i]=bspline_dens.star
-                    s1=s1+dnorm(Y[i],logb(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
-                    s2=s2+dnorm(Y[i],logb(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                    s1=s1+dnorm(Y[i],mu_f(t(G)%*%bspline_dens.star,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+                    s2=s2+dnorm(Y[i],mu_f(t(G)%*%Bspline_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
                 }
  		        lnr=s1-s2
             if(min(exp(lnr),1)>runif(1)){
@@ -470,7 +495,7 @@ gibbs_bspline_est_linkfunction= function(
     
     ### step9: sigma& kc (sampled directly)
     
-        mu=t(Y)-logb(t(G)%*%Bspline_dens,baseb)
+        mu=t(Y)-mu_f(t(G)%*%Bspline_dens,baseb)
         sye=mu%*%diag(1/kc)%*%t(mu)
         sigma=rinvgamma(1,(nu0+3*n)/2,(nu0*s0+2*sum(kc)+sye/8)/2)
         Sigma[s]=sigma
@@ -478,7 +503,7 @@ gibbs_bspline_est_linkfunction= function(
 
         eta2=2/sigma
         for (i in 1:n){
-        eta1=((Y[i]-logb(t(G)%*%Bspline_dens[,i],baseb))^2)/(8*sigma)
+        eta1=((Y[i]-mu_f(t(G)%*%Bspline_dens[,i],baseb))^2)/(8*sigma)
             kc[i]=rgig(1,1/2,sqrt(eta1),sqrt(eta2))
         } 
         KC[s,]=kc

@@ -3,7 +3,7 @@ library(mgcv);library(mvtnorm);library(truncnorm);library(GIGrvg);library(invgam
 
 ##### data structure
 gibbs_bernstein_est_linkfunction= function(
-  X,Y,S=10000,L=max(20,n^(1/3)),Kmax=50,M=1,a=0.01,b=0.01,K=10,nu0=500,s0=0.05,lambda=10,dk=4,sigma=0.5,baseb=1.15,burnin=2000
+  X,Y,S=10000,L=max(20,n^(1/3)),Kmax=50,M=1,a=0.01,b=0.01,K=10,nu0=500,s0=0.05,lambda=10,dk=4,sigma=0.5,baseb=1.15,burnin=2000,logstate=TRUE
 ){
 n=nrow(X)
 p=ncol(X)
@@ -34,6 +34,17 @@ if(beta[which(r==1)[1]]<0){beta=-beta} #beta1>0
 
 #Initialise kc
 kc=runif(n,0,3) 
+
+#if log
+if(logstate){
+  mu_f=function(x,baseb){
+    return(mu_f(x,baseb))
+  } 
+}else{
+  mu_f=function(x,baseb){
+    return(x)
+  }
+}
 
 ##### Define Parameter space
 KK=Lambda=beta_dens=Raa=Sigma=AA=NULL
@@ -68,8 +79,8 @@ for(s in 1:S){
      beta_dens[g]=dbeta(w,g,K-g+1)
    }
     Beta_dens[,i]=beta_dens
-    s1=s1+dnorm(Y[i],logb(t(G.s)%*%beta_dens.s,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
-    s2=s2+dnorm(Y[i],logb(t(G)%*%beta_dens,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+    s1=s1+dnorm(Y[i],mu_f(t(G.s)%*%beta_dens.s,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+    s2=s2+dnorm(Y[i],mu_f(t(G)%*%beta_dens,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
  }
  
  lnr=s1-s2+(K.s-K)*log(lambda)+log(factorial(K))-log(factorial(K.s))
@@ -103,13 +114,12 @@ Lambda[s]=lambda
         XB=X%*%beta
         for(i in 1:n){
           w=exp(XB[i])/(1+exp(XB[i]))
-          for (j in 1:K){
-          beta_dens[j]=dbeta(w,j,K-j+1)
+          for (jj in 1:K){
+          beta_dens[jj]=dbeta(w,jj,K-jj+1)
           }
           Beta_dens[,i]=beta_dens
         }
    }
-
  	if(rj.s!=r[j] & sum(r.s)>=1){
  	  q.s=rbeta(1,1+rj.s,2-rj.s)
  		beta.s=NULL
@@ -138,8 +148,8 @@ Lambda[s]=lambda
       for (jj in 1:K){
         beta_dens.s[jj]=dbeta(w.s,jj,K-jj+1)
         }
- 			s1=s1+dnorm(Y[i],logb(t(G)%*%beta_dens.s,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
- 			s2=s2+dnorm(Y[i],logb(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 			s1=s1+dnorm(Y[i],mu_f(t(G)%*%beta_dens.s,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 			s2=s2+dnorm(Y[i],mu_f(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
  			Beta_dens.s[,i]=beta_dens.s
  		}   
  		lnr=s1-s2+(rj.s)*log(q.s/(1-q.s))-(r[j])*log(q/(1-q))+log(1-q.s)-log(1-q)+(nr-nr.s)*log(pi)/2+log(gamma(nr.s/2))-log(gamma(nr/2))
@@ -172,8 +182,8 @@ Lambda[s]=lambda
       beta_dens.s[j]=dbeta(w.s,j,K-j+1)
       }
  	  Beta_dens.s[,i]=beta_dens.s
- 	  s1=s1+dnorm(Y[i],logb(t(G)%*%beta_dens.s,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
- 	  s2=s2+dnorm(Y[i],logb(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 	  s1=s1+dnorm(Y[i],mu_f(t(G)%*%beta_dens.s,baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 	  s2=s2+dnorm(Y[i],mu_f(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
     }
  lnr=s1-s2+(t(beta.s-sqrt(2)*mcmc_beta_r_rho*beta)%*%solve(diag(rep(p)))%*%(beta.s-sqrt(2)*mcmc_beta_r_rho*beta)-t(beta-sqrt(2)*mcmc_beta_r_rho*beta.s)%*%solve(diag(rep(p)))%*%(beta-sqrt(2)*mcmc_beta_r_rho*beta.s))/2
  mcmc_r_beta_ratio=min(exp(lnr),1);R_beta_ratio[s]=mcmc_r_beta_ratio
@@ -193,8 +203,8 @@ Lambda[s]=lambda
  	G.s= DP.s$G
  	s1=s2=0
   for(i in 1:n){
- 		s1=s1+dnorm(Y[i],logb(t(G.s)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
- 		s2=s2+dnorm(Y[i],logb(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 		s1=s1+dnorm(Y[i],mu_f(t(G.s)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 		s2=s2+dnorm(Y[i],mu_f(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
  	}
  	lnr=s1-s2+(M-1)*(log(1-Vl.s)-log(1-V[l]))
  	if(min(exp(lnr),1)>runif(1)){V[l]=Vl.s;G=NULL;G=G.s;DP=NULL;DP=DP.s}
@@ -217,8 +227,8 @@ Lambda[s]=lambda
     G.s[Zg.s[l]]=G.s[Zg.s[l]]+P[l]
     s1=s2=0
     for (i in 1:n){
- 		s1=s1+dnorm(Y[i],logb(t(G.s)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
- 		s2=s2+dnorm(Y[i],logb(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 		s1=s1+dnorm(Y[i],mu_f(t(G.s)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
+ 		s2=s2+dnorm(Y[i],mu_f(t(G)%*%Beta_dens[,i],baseb),sqrt(8*kc[i]*sigma),log=TRUE)
  	}
  		lnr=s1-s2
  		if(min(exp(lnr),1)>runif(1)){Z[l]=Zl.s;G=G.s;DP=NULL;DP=list(G=G,Zg=Zg.s,P=P)}
@@ -227,7 +237,7 @@ Lambda[s]=lambda
  ZZ[s,]=Z;GG[s,1:K]=G
 
  ### the sigma
- mu=t(Y)-logb(t(G)%*%Beta_dens,baseb)
+ mu=t(Y)-mu_f(t(G)%*%Beta_dens,baseb)
  sy=mu%*%diag(1/kc)%*%t(mu)
  sigma=rinvgamma(1,(nu0+3*n)/2,(nu0*s0+2*sum(kc)+sy/8)/2)
  Sigma[s]=sigma
@@ -235,7 +245,7 @@ Lambda[s]=lambda
  ### the kc
  eta2=2/sigma
   for (i in 1:n){
-    eta1=((Y[i]-logb(t(G)%*%Beta_dens[,i],baseb))^2)/(8*sigma)
+    eta1=((Y[i]-mu_f(t(G)%*%Beta_dens[,i],baseb))^2)/(8*sigma)
   kc[i]=rgig(1,1/2,sqrt(eta1),sqrt(eta2))
  } 
  KC[s,]=kc
